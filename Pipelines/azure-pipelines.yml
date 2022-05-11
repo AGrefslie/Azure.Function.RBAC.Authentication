@@ -1,0 +1,71 @@
+﻿# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+trigger:
+ branches:
+  include: 
+  - master
+  - main
+
+ paths:
+  exclude:
+   - readme.md
+
+pool:
+  vmImage: 'windows-2022'
+
+variables:
+  solution: '**/*.sln'
+  buildPlatform: 'Any CPU'
+  buildConfiguration: 'Release'
+
+steps:
+- task: DotNetCoreCLI@2
+  displayName: 'restore'
+  inputs:
+    command: 'restore'
+    projects: '**/*.csproj'
+    feedsToUse: 'select'
+    vstsFeed: '18bc9aac-c4a9-4b24-98e2-4fdc8aedcd8e'
+
+- task: DotNetCoreCLI@2
+  displayName: 'build'
+  inputs:
+    command: 'build'
+    projects: '**/*.csproj'
+    arguments: '--configuration $(BuildConfiguration) --no-restore'
+
+- task: DotNetCoreCLI@2
+  displayName: 'Run unit tests with code coverage'
+  inputs:
+    command: test
+    projects: '**/*tests.csproj'
+    arguments: '--no-restore --configuration $(BuildConfiguration) /p:CollectCoverage=true  /p:CoverletOutputFormat=cobertura /p:CoverletOutput=$(Build.SourcesDirectory)\TestResults\Coverage\ /p:Threshold=5 /p:ThresholdStat=average --filter "Category!=IntegrationTest"'
+    publishTestResults: true
+    testRunTitle: 'Unit test with coverage'
+ 
+- task: PublishCodeCoverageResults@1
+  displayName: 'Publish code coverage report'
+  inputs:
+    codeCoverageTool: 'Cobertura'
+    summaryFileLocation: '$(Build.SourcesDirectory)\**\coverage.cobertura.xml'
+    pathToSources: '$(Build.SourcesDirectory)/'
+    reportDirectory: '$(build.artifactstagingdirectory))/TestResults/coverage'
+
+- task: DotNetCoreCLI@2
+  inputs:
+    command: 'custom'
+    projects: '**/OBOSIT.DTP.Utilities.Authentication.csproj'
+    custom: 'pack'
+    arguments: '-c=$(BuildConfiguration) --no-restore -o $(Build.ArtifactStagingDirectory) --no-build'
+
+
+- task: DotNetCoreCLI@2
+  displayName: 'nuget push'
+  inputs:
+    command: push
+    packagesToPush: '$(Build.ArtifactStagingDirectory)/OBOSIT.DTP.Utilities.Authentication*.nupkg;!$(Build.ArtifactStagingDirectory)/*.symbols*.nupkg'
+    publishVstsFeed: '/18bc9aac-c4a9-4b24-98e2-4fdc8aedcd8e'
+  continueOnError: true
